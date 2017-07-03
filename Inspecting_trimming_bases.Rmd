@@ -1,0 +1,82 @@
+---
+title: "Example: Inspecting and Trimming Low-Quality Bases"
+output: 
+  html_notebook: 
+    toc: yes
+---
+
+##Loading necessary libraries
+```{r, message=FALSE, warning=FALSE}
+library(BiocInstaller)
+library(qrqc)
+library(dplyr)
+library(ggplot2)
+```
+
+## Initial preps
+let’s trim the `untreated1_chr4.fq` FASTQ file. This FASTQ file was generated from the untreated1_chr4.bam BAM file in the pasillaBamSubset Bioconductor package. To keep things simple, we’ll use each program’s default settings. Starting with sickle:
+```{r, eval=FALSE}
+$ sickle se -f untreated1_chr4.fq -t sanger -o untreated1_chr4_sickle.fq
+```
+`sickle` takes an input file through -f, a quality type through -t, and trimmed output
+file with -o.
+Now, let’s run `seqtk trimfq`, which takes a single argument and outputs trimmed
+sequences through standard out:
+```{r, eval=FALSE}
+$ seqtk trimfq untreated1_chr4.fq > untreated1_chr4_trimfq.fq
+```
+
+## Visualisation comparison of results
+Let’s compare these results in R. We’ll use `qrqc` to collect the distributions of quality
+by position in these files, and then visualize these using `ggplot2`. We could load these
+in one at a time, but a nice workflow is to automate this with `lapply()`:
+```{r}
+
+# FASTQ files
+fqfiles <- c(none="untreated1_chr4.fq",
+            sickle="untreated1_chr4_sickle.fq",
+            trimfq="untreated1_chr4_trimfq.fq")
+
+# Load each file in, using qrqc's readSeqFile
+# We only need qualities, so we turn off some of
+# readSeqFile's other features.
+
+seq_info <- lapply(fqfiles, function(file) {
+                  readSeqFile(file, hash=FALSE, kmer=FALSE)
+                  })
+
+# Extract the qualities as dataframe, and append
+# a column of which trimmer (or none) was used. This
+# is used in later plots.
+quals <- mapply(function(sfq, name) {
+                  qs <- getQual(sfq)
+                  qs$trimmer <- name
+                  qs
+                  }, seq_info, names(fqfiles), SIMPLIFY=FALSE)
+
+# Combine separate dataframes in a list into single dataframe
+d <- do.call(rbind, quals)
+
+# Visualize qualities
+p1 <- ggplot(d) + geom_line(aes(x=position, y=mean, linetype=trimmer))
+p1 <- p1 + ylab("mean quality (sanger)") + theme_bw()
+print(p1)
+
+# Use qrqc's qualPlot with list produces panel plots
+# Only shows 10% to 90% quantiles and lowess curve
+p2 <- qualPlot(seq_info, quartile.color=NULL, mean.color=NULL) + theme_bw()
+p2 <- p2 + scale_y_continuous("quality (sanger)")
+print(p2)
+```
+In one line, we can trim low-quality bases from the ends of these sequences—running
+the trimming commands is not difficult. The more important step is to *visualize* what
+these trimming programs did to our data by comparing the files before and after
+trimming. Checking how programs change our data rather than trusting they did the
+right thing is an essential part of robust bioinformatics and abides by the Golden Rule
+(don’t trust your tools). In this example, checking a small subset of data took fewer
+than 20 lines of code (ignoring blank lines and comments that improve readability)
+and only a few extra minutes—but it gives us valuable insight in what these programs
+do to our data and how they differ. If we like, we could also run both quality trim‐
+ming programs with numerous different settings and compare how these affect our
+results. Much of careful bioinformatics is this process: run a program, compare out‐
+put to original data, run a program, compare output, and so on.
