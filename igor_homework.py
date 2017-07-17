@@ -61,6 +61,20 @@ all_bases
 #         'n': 85,
 #         't': 429505846})
     
+    
+# Read in the whole genome and load the sequences into a Counter. Use Counter to count all the bases.
+def readGenome(filename):
+    genome = collections.Counter()
+    with open(filename, 'r') as f:
+        for line in f:
+            # ignore header line with genome information
+            if not line[0] == '>':
+                genome.update(line.rstrip())
+    return genome
+all_bases = readGenome(filename)
+all_bases
+
+
 # Number of all bases:
 sum(all_bases.values()) #3137161264
     
